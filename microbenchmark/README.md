@@ -39,3 +39,16 @@ This is necessary to allow the flow to perform rich experiments, data analysis,
 and visualization. Previous benchmarking efforts have been assembled out of
 command line tools that have provided limited ability to scale the effort's
 level of sophistication.
+
+# Design issues
+
+There is currently no reliable way for us to correlate the trace with
+our executed program. We rely on implementation details of IREE such as
+dispatch region zone name conventions, and the fact that IREE dispatches the
+same set of workgroups for a given workload. It would be great if there
+was a way for us to annotate our IR with zone names around the regions we
+want to measure, so then we could total dispatch time for dispatch zones
+enclosed in a region whose name we can reliably identify.
+
+TODO: We could perhaps do this by munging the source locations of the generated
+IR and looking at the location column in the CSV dump.

@@ -1,4 +1,4 @@
-from typing import Tuple, Optional
+from typing import Tuple
 
 from dataclasses import dataclass
 
@@ -17,8 +17,7 @@ class Invocation:
     vmfb: bytes
     function_name: str
     inputs: Tuple[InvocationInput, ...]
-    # If present, only correctness will be checked.
-    golden_result: Optional[np.ndarray]
+    golden_result: np.ndarray
 
 def executor_process_entry_fn(conn):
     # This must be imported here lazily to avoid importing iree.runtime
