@@ -1,0 +1,12 @@
+# Not iree-runtime, so we can use a custom runtime with tracing
+--pre
+-f https://iree-org.github.io/iree/pip-release-links.html
+iree-compiler
+
+torch
+-f https://llvm.github.io/torch-mlir/package-index/
+torch-mlir
+
+pandas
+matplotlib
+seaborn

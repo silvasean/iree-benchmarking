@@ -1,1 +1,3 @@
-iree.venv
+*.venv
+__pycache__
+*.tracy
