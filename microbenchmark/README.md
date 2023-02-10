@@ -15,8 +15,8 @@ export PYTHONPATH=$IREE_BUILD_DIR/runtime/bindings/python
 
 # Run the microbenchmark driver.
 python -m microbenchmark.driver
-# Keep the trace file locally for inspection.
-python -m microbenchmark.driver -k micro.tracy
+# Keep the trace file and trace file CSV export locally for inspection.
+python -m microbenchmark.driver -t micro.tracy -d micro.csv
 ```
 
 # Architecture

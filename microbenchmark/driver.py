@@ -22,8 +22,10 @@ from . import executor
 def _get_argparse():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("-k", "--keep-trace", type=str,
+    parser.add_argument("-t", "--trace-file", type=str,
                         help="Path to keep the trace file. If not specified, the trace file will be a temporary file.")
+    parser.add_argument("-d", "--dataframe-csv-file", type=str,
+                        help="If specified, path to write the raw tracy pd.DataFrame file as CSV.")
     parser.add_argument("-c", "--only-check-correctness", default=False, action="store_true",
                         help="Only check numerical correctness of the code, rather than doing any actual benchmarking.")
     return parser
@@ -39,7 +41,7 @@ class BenchmarkSequence(abc.ABC):
         pass
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class MatmulProblem:
     mkn: Tuple[int, int, int]
     mkn_dynamic: Tuple[bool, bool, bool]
@@ -49,10 +51,22 @@ class MatmulProblem:
         short_dynamic_str = "x".join("d" if d else "s" for d in self.mkn_dynamic)
         return f"mkn_{m}x{k}x{n}_mkn_dynamic_{short_dynamic_str}"
 
+def _find_row_for_problem(grouped: pd.DataFrame, problem: MatmulProblem):
+    for row in grouped.itertuples():
+        if row.Index.endswith("{}x{}x{}".format(*problem.mkn)):
+            return row.total_exec_time_ns, row.num_workgroups_dispatched
+    raise RuntimeError(f"Could not find row for problem {problem}")
+
 
 class MatmulSweep(BenchmarkSequence):
     def __init__(self, problems: List[MatmulProblem]):
         self.problems = problems
+        seen_mkn_values = set()
+        for problem in problems:
+            # TODO: Due to inability to bracket invocations with trace zones,
+            # we cannot reliably handle duplicate mkn values.
+            assert problem.mkn not in seen_mkn_values, "Duplicate mkn values"
+            seen_mkn_values.add(problem.mkn)
 
     def _compile_for_problem(self, problem: MatmulProblem):
         m, k, n = problem.mkn
@@ -107,9 +121,24 @@ class MatmulSweep(BenchmarkSequence):
     # do the analysis post-hoc rather than needing to sketchily infer the
     # regions based on dispatch region names and the number of benchmark
     # iterations per Invocation.
+    # TODO: We could set phony source locations to do this.
     def process_trace(self, df: pd.DataFrame, benchmark_iters: List[int]):
-        print(df)
-        print(benchmark_iters)
+        print(f"benchmark_iters = {benchmark_iters}")
+        grouped = df.groupby("name").agg({"exec_time_ns": ["sum", "count"]})
+        grouped.columns = ["total_exec_time_ns", "num_workgroups_dispatched"]
+        gflops = {}
+        for problem, count in zip(self.problems, benchmark_iters):
+            total_exec_time_ns, num_workgroups_dispatched = \
+                _find_row_for_problem(grouped, problem)
+            # TODO: Bracket invocations with properly labeled zones to
+            # make this actually robust.
+            assert num_workgroups_dispatched % count == 0, "Irregular number of workgroups per benchmark iteration"
+            ns_per_invocation = total_exec_time_ns / count
+            m, k, n = problem.mkn
+            gflops[problem] = (m * k * n) / ns_per_invocation
+        for problem, gflops in gflops.items():
+            print(problem, gflops)
+
 
 
 def main():
@@ -132,12 +161,16 @@ def main():
         parent_conn.send("only check correctness")
     else:
         parent_conn.send("do benchmarking")
-
+    BASELINE_SIZES = [
+        32, 64, 96,
+        128, 192, 256, 384,
+        #512, 1024,
+        #1536, 2048,
+        #3072, 4096,
+    ]
     sweep = MatmulSweep([
-        MatmulProblem(mkn=(512, 512, 512),
-                      mkn_dynamic=(False, False, False)),
-        MatmulProblem(mkn=(1024, 1024, 1024),
-                      mkn_dynamic=(False, False, False)),
+        MatmulProblem(mkn=(s, s, s), mkn_dynamic=(False, False, False))
+        for s in BASELINE_SIZES
     ])
     benchmark_iters = []
     for invocation in sweep.invocations():
@@ -151,9 +184,9 @@ def main():
     wait_result = parent_conn.recv()
     assert wait_result == "done executing child work"
 
-    if args.keep_trace:
-        trace_file = open(args.keep_trace, "wb")
-        trace_file_name = args.keep_trace
+    if args.trace_file:
+        trace_file = open(args.trace_file, "wb")
+        trace_file_name = args.trace_file
     else:
         trace_file = tempfile.NamedTemporaryFile(
             suffix=".tracy",
@@ -175,6 +208,8 @@ def main():
         ])
 
     df = pd.read_csv(BytesIO(tracy_csv))
+    if args.dataframe_csv_file:
+        df.to_csv(args.dataframe_csv_file)
     if not args.only_check_correctness:
         sweep.process_trace(df, benchmark_iters)
     print("DONE")
