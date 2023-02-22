@@ -153,6 +153,10 @@ def main(args):
             "--iree-hal-cuda-llvm-target-arch=sm_80",
             "--iree-flow-dump-dispatch-graph",
             "--iree-flow-dump-dispatch-graph-output-file=/tmp/attention_layer.dot",
+            "--iree-flow-enable-aggressive-fusion",
+            # Allow large buffers.
+            "--iree-stream-resource-index-bits=64",
+            "--iree-vm-target-index-bits=64",
         ],
     )
     config = ireert.Config(driver_name="cuda")
