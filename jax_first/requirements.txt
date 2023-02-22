@@ -1,0 +1,10 @@
+--pre
+
+-f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+jax[cuda]
+flax
+
+# IREE
+-f https://iree-org.github.io/iree/pip-release-links.html
+iree-compiler
+iree-runtime
